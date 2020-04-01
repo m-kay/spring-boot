@@ -19,11 +19,14 @@ import java.security.KeyFactory;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
+import java.util.List;
+import java.util.Optional;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.IssuerUriCondition;
+import org.springframework.boot.autoconfigure.security.oauth2.resource.JwkSetUriJwtDecoderBuilderCustomizer;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.KeyValueCondition;
 import org.springframework.boot.autoconfigure.security.oauth2.resource.OAuth2ResourceServerProperties;
 import org.springframework.context.annotation.Bean;
@@ -63,13 +66,17 @@ class OAuth2ResourceServerJwtConfiguration {
 
 		@Bean
 		@ConditionalOnProperty(name = "spring.security.oauth2.resourceserver.jwt.jwk-set-uri")
-		JwtDecoder jwtDecoderByJwkKeySetUri() {
-			NimbusJwtDecoder nimbusJwtDecoder = NimbusJwtDecoder.withJwkSetUri(this.properties.getJwkSetUri())
-					.jwsAlgorithm(SignatureAlgorithm.from(this.properties.getJwsAlgorithm())).build();
+		JwtDecoder jwtDecoderByJwkKeySetUri(Optional<List<JwkSetUriJwtDecoderBuilderCustomizer>> customizers) {
+			NimbusJwtDecoder.JwkSetUriJwtDecoderBuilder jwkSetUriJwtDecoderBuilder = NimbusJwtDecoder
+					.withJwkSetUri(this.properties.getJwkSetUri())
+					.jwsAlgorithm(SignatureAlgorithm.from(this.properties.getJwsAlgorithm()));
+			customizers.ifPresent((it) -> it.forEach((customizer) -> customizer.customize(jwkSetUriJwtDecoderBuilder)));
+			NimbusJwtDecoder nimbusJwtDecoder = jwkSetUriJwtDecoderBuilder.build();
 			String issuerUri = this.properties.getIssuerUri();
 			if (issuerUri != null) {
 				nimbusJwtDecoder.setJwtValidator(JwtValidators.createDefaultWithIssuer(issuerUri));
 			}
+
 			return nimbusJwtDecoder;
 		}
 

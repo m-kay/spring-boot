@@ -32,6 +32,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.autoconfigure.security.oauth2.resource.JwkSetUriJwtDecoderBuilderCustomizer;
 import org.springframework.boot.test.context.FilteredClassLoader;
 import org.springframework.boot.test.context.assertj.AssertableWebApplicationContext;
 import org.springframework.boot.test.context.runner.WebApplicationContextRunner;
@@ -54,6 +55,7 @@ import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthen
 import org.springframework.security.web.FilterChainProxy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.client.RestTemplate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -87,6 +89,23 @@ class OAuth2ResourceServerAutoConfigurationTests {
 				.run((context) -> {
 					assertThat(context).hasSingleBean(JwtDecoder.class);
 					assertThat(getBearerTokenFilter(context)).isNotNull();
+				});
+	}
+
+	@Test
+	void autoConfigurationShouldCustomizeBuilder() {
+		this.contextRunner
+				.withPropertyValues("spring.security.oauth2.resourceserver.jwt.jwk-set-uri=https://jwk-set-uri.com")
+				.withUserConfiguration(CustomizerConfig.class).run((context) -> {
+					assertThat(context).hasSingleBean(JwtDecoder.class);
+					JwtDecoder jwtDecoder = context.getBean(JwtDecoder.class);
+					Object processor = ReflectionTestUtils.getField(jwtDecoder, "jwtProcessor");
+					Object keySelector = ReflectionTestUtils.getField(processor, "jwsKeySelector");
+					Object jwkSource = ReflectionTestUtils.getField(keySelector, "jwkSource");
+					Object jwkSetRetriever = ReflectionTestUtils.getField(jwkSource, "jwkSetRetriever");
+					Object restOperations = ReflectionTestUtils.getField(jwkSetRetriever, "restOperations");
+					assertThat(restOperations).isNotNull();
+					assertThat(restOperations).isEqualTo(CustomizerConfig.configuredRestTemplate);
 				});
 	}
 
@@ -410,6 +429,19 @@ class OAuth2ResourceServerAutoConfigurationTests {
 	@Configuration(proxyBeanMethods = false)
 	@EnableWebSecurity
 	static class TestConfig {
+
+	}
+
+	@Configuration(proxyBeanMethods = false)
+	@EnableWebSecurity
+	static class CustomizerConfig {
+
+		private static final RestTemplate configuredRestTemplate = new RestTemplate();
+
+		@Bean
+		JwkSetUriJwtDecoderBuilderCustomizer jwtDecoderBuilderCustomizer() {
+			return (jwtDecoderBuilder) -> jwtDecoderBuilder.restOperations(configuredRestTemplate);
+		}
 
 	}
 
